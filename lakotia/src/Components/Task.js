@@ -1088,10 +1088,10 @@ const TaskPage = () => {
                     </div>
                     <div className="col-md-6">
                       <p><strong>Supplier Part No:</strong> {formData.supplier_part_no || "N/A"}</p>
-                      <p><strong>Cut Width:</strong> {formData.cut_width || "N/A"}</p>
-                      <p><strong>Length:</strong> {formData.length || "N/A"}</p>
+                      <p><strong>Cut Width (mm):</strong> {formData.cut_width || "N/A"}</p>
+                      <p><strong>Length (M):</strong> {formData.length || "N/A"}</p>
                       <p><strong>Quantity:</strong> {formData.quantity || "N/A"}</p>
-                      <p><strong>MRP:</strong> {formData.mrp ? `₹${formData.mrp}` : "N/A"}</p>
+                      <p><strong>NBP:</strong> {formData.mrp ? `₹${formData.mrp}` : "N/A"}</p>
                     </div>
                   </div>
                   {formData.company_address && (
@@ -1366,11 +1366,11 @@ const TaskPage = () => {
                           <td>{selectedViewTask.supplier_part_no || "-"}</td>
                         </tr>
                         <tr>
-                          <th className="text-muted">Cut Width:</th>
+                          <th className="text-muted">Cut Width (mm):</th>
                           <td>{selectedViewTask.cut_width || "-"}</td>
                         </tr>
                         <tr>
-                          <th className="text-muted">Length:</th>
+                          <th className="text-muted">Length (M):</th>
                           <td>{selectedViewTask.length || "-"}</td>
                         </tr>
                         <tr>
@@ -1418,7 +1418,7 @@ const TaskPage = () => {
                           <td>{selectedViewTask.unit || "-"}</td>
                         </tr>
                         <tr>
-                          <th className="text-muted">MRP:</th>
+                          <th className="text-muted">NBP:</th>
                           <td>{selectedViewTask.mrp ? `₹${selectedViewTask.mrp}` : "-"}</td>
                         </tr>
                         {selectedViewTask.material_type && (

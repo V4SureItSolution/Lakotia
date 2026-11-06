@@ -2368,7 +2368,7 @@ export default function StockUploadPage() {
                 <div style={{ minWidth: 120, fontWeight: 600 }}>Brand</div>
                 <div style={{ minWidth: 120, fontWeight: 600 }}>Batch</div>
                 <div style={{ minWidth: 80, fontWeight: 600 }}>HSN</div>
-                <div style={{ minWidth: 80, fontWeight: 600 }}>MRP</div>
+                <div style={{ minWidth: 80, fontWeight: 600 }}>NBP</div>
                 <div style={{ minWidth: 120, fontWeight: 600 }}>Status</div>
               </div>
 

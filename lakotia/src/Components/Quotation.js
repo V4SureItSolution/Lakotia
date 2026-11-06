@@ -144,6 +144,7 @@ export default function QuotationModal() {
   const [quotationPacking, setQuotationPacking] = useState("0");
   const [quotationFreight, setQuotationFreight] = useState("0");
   const [quotationGstRate, setQuotationGstRate] = useState("18");
+  const [quotationRemarks, setQuotationRemarks] = useState("");
 
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedQuotation, setSelectedQuotation] = useState(null);
@@ -789,6 +790,7 @@ export default function QuotationModal() {
     setQuotationPacking("0");
     setQuotationFreight("0");
     setQuotationGstRate("18");
+    setQuotationRemarks("");
 
     setFilteredCompanies([]);
     setShowCompanyDropdown(false);
@@ -955,7 +957,7 @@ export default function QuotationModal() {
   const gstAmount = (item) => {
     const taxableAmount = itemTotalBeforeGST(item);
     const tax_rate = getTaxRate(item, quotationGstRate);
-    const gst = taxableAmount * (tax_rate / 100);
+    const gst = Math.round(taxableAmount * (tax_rate / 100));
     return parseFloat(gst.toFixed(2));
   };
 
@@ -986,8 +988,8 @@ export default function QuotationModal() {
       : (items[0] && items[0].tax_rate !== undefined && items[0].tax_rate !== null && items[0].tax_rate !== "" ? parseFloat(items[0].tax_rate) : 18);
 
     const baseForGST = subtotal + packingVal + freightVal;
-    const totalGST = baseForGST * (gstRateVal / 100);
-    const grandTotal = baseForGST + totalGST;
+    const totalGST = Math.round(baseForGST * (gstRateVal / 100));
+    const grandTotal = Math.round(baseForGST + totalGST);
 
     return {
       subtotal: parseFloat(subtotal.toFixed(2)),
@@ -1134,7 +1136,8 @@ export default function QuotationModal() {
       grand_total: totals.grandTotal,
       payment_terms: paymentTerms,
       delivery_terms: deliveryTerms,
-      notes: `Payment Terms: ${paymentTerms}\nDelivery Terms: ${deliveryTerms}\nPlease process this quote as per the terms mentioned.\nAll prices are in INR and inclusive of GST.`,
+      remarks: quotationRemarks,
+      notes: `Payment Terms: ${paymentTerms}\nDelivery Terms: ${deliveryTerms}${quotationRemarks ? `\nRemarks: ${quotationRemarks}` : ''}\nPlease process this quote as per the terms mentioned.\nAll prices are in INR and inclusive of GST.`,
       status: "draft",
       items: preparedItems,
       created_by: currentUser.username || "User",
@@ -1292,6 +1295,7 @@ export default function QuotationModal() {
         setQuotationPacking((quoteData.total_packing ?? quoteData.totals?.totalPacking ?? 0).toString());
         setQuotationFreight((quoteData.total_freight ?? quoteData.totals?.totalFreight ?? 0).toString());
         setQuotationGstRate((quoteData.items?.[0]?.tax_rate ?? quoteData.tax_rate ?? 18).toString());
+        setQuotationRemarks(quoteData.remarks || quoteData.notes_remarks || "");
         setItems(parsedItems);
 
         setEditingQuotation(quoteData);
@@ -1319,6 +1323,7 @@ export default function QuotationModal() {
       setQuotationPacking((quotation.total_packing || quotation.totals?.totalPacking || 0).toString());
       setQuotationFreight((quotation.total_freight || quotation.totals?.totalFreight || 0).toString());
       setQuotationGstRate((quotation.items?.[0]?.tax_rate || quotation.tax_rate || 18).toString());
+      setQuotationRemarks(quotation.remarks || "");
       setItems(quotation.items || []);
 
       setEditingQuotation(quotation);
@@ -1463,7 +1468,8 @@ export default function QuotationModal() {
       grand_total: totals.grandTotal,
       payment_terms: paymentTerms,
       delivery_terms: deliveryTerms,
-      notes: `Payment Terms: ${paymentTerms}\nDelivery Terms: ${deliveryTerms}\nPlease process this quote as per the terms mentioned.\nAll prices are in INR and inclusive of GST.`,
+      remarks: quotationRemarks,
+      notes: `Payment Terms: ${paymentTerms}\nDelivery Terms: ${deliveryTerms}${quotationRemarks ? `\nRemarks: ${quotationRemarks}` : ''}\nPlease process this quote as per the terms mentioned.\nAll prices are in INR and inclusive of GST.`,
       status: editingQuotation.status || "draft",
       items: preparedItems,
       updated_by: currentUser.username || "User"
@@ -1742,8 +1748,8 @@ export default function QuotationModal() {
                   <th>Item Name</th>
                   <th>Customer Part No.</th>
                   <th>Customer Description</th>
-                  <th>Cut Width</th>
-                  <th>Cut Length</th>
+                  <th>Cut Width (mm)</th>
+                  <th>Cut Length (M)</th>
                   <th>Qty</th>
                   <th>UoM</th>
                   <th>Price/Unit</th>
@@ -2719,8 +2725,8 @@ export default function QuotationModal() {
                         <tr>
                           <th>Item Name</th>
                           <th>Brand Code</th>
-                          <th>Width</th>
-                          <th>Length</th>
+                          <th>Width (mm)</th>
+                          <th>Length (M)</th>
                           <th>Qty</th>
                           <th>Customer Desc</th>
                         </tr>
@@ -3074,11 +3080,11 @@ export default function QuotationModal() {
                               <th>Item Name</th>
                               <th width="110">Cust Part No</th>
                               <th width="130">Cust Desc</th>
-                              <th width="70">Width</th>
-                              <th width="70">Length</th>
+                              <th width="85">Width (mm)</th>
+                              <th width="80">Length (M)</th>
                               <th width="70">Qty</th>
                               <th width="60">Unit</th>
-                              <th width="80">MRP</th>
+                              <th width="80">NBP</th>
                               <th width="80">Profit %</th>
                               <th width="90">Price/Unit</th>
                               <th width="165" style={{ minWidth: "165px" }}>Discount</th>
@@ -3259,6 +3265,18 @@ export default function QuotationModal() {
                               <option value="0">0%</option>
                             </select>
                           </div>
+                        </div>
+                        <div className="mt-3">
+                          <label className="form-label fw-bold small">
+                            <i className="bi bi-chat-left-text me-1 text-primary"></i>Remarks:
+                          </label>
+                          <textarea
+                            className="form-control"
+                            rows="2"
+                            value={quotationRemarks}
+                            onChange={(e) => setQuotationRemarks(e.target.value)}
+                            placeholder="Enter quotation remarks..."
+                          />
                         </div>
                       </div>
                     </div>
@@ -3644,11 +3662,11 @@ export default function QuotationModal() {
                               <th style={{ minWidth: '150px' }}>Item Name</th>
                               <th style={{ minWidth: '110px' }}>Cust Part No</th>
                               <th style={{ minWidth: '130px' }}>Cust Desc</th>
-                              <th style={{ minWidth: '70px' }}>Width</th>
-                              <th style={{ minWidth: '70px' }}>Length</th>
+                              <th style={{ minWidth: '85px' }}>Width (mm)</th>
+                              <th style={{ minWidth: '80px' }}>Length (M)</th>
                               <th style={{ minWidth: '75px' }}>Qty</th>
                               <th style={{ minWidth: '60px' }}>Unit</th>
-                              <th style={{ minWidth: '90px' }}>MRP</th>
+                              <th style={{ minWidth: '90px' }}>NBP</th>
                               <th style={{ minWidth: '85px' }}>Profit %</th>
                               <th style={{ minWidth: '95px' }}>Price/Unit</th>
                               <th width="165" style={{ minWidth: "165px" }}>Discount</th>
@@ -3830,6 +3848,18 @@ export default function QuotationModal() {
                             </select>
                           </div>
                         </div>
+                        <div className="mt-3">
+                          <label className="form-label fw-bold small">
+                            <i className="bi bi-chat-left-text me-1 text-primary"></i>Remarks:
+                          </label>
+                          <textarea
+                            className="form-control"
+                            rows="2"
+                            value={quotationRemarks}
+                            onChange={(e) => setQuotationRemarks(e.target.value)}
+                            placeholder="Enter quotation remarks..."
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -3985,8 +4015,8 @@ export default function QuotationModal() {
                             <th>Item Name</th>
                             <th>Customer Part No</th>
                             <th>Customer Description</th>
-                            <th>Width</th>
-                            <th>Length</th>
+                            <th>Width (mm)</th>
+                            <th>Length (M)</th>
                             <th>Qty</th>
                             <th>Price/Unit</th>
                             <th>GST %</th>
@@ -4093,7 +4123,10 @@ export default function QuotationModal() {
                     </div>
 
                     <div className="mt-3 p-2 bg-light rounded">
-                      <h5>Notes:</h5>
+                      <h5>Notes & Remarks:</h5>
+                      {quotationRemarks && (
+                        <p className="mb-1 mobile-text-small"><strong>Remarks:</strong> {quotationRemarks}</p>
+                      )}
                       <p className="mb-0 mobile-text-small">Please process this quote as per the terms mentioned. All prices are in INR and inclusive of GST. Delivery within 7-10 business days.</p>
                       <p className="mb-0 mt-2 mobile-text-small"><strong>Valid for 30 days from the date of issue.</strong></p>
                     </div>
@@ -4195,7 +4228,7 @@ export default function QuotationModal() {
                               </div>
                             </div>
                             <div className="text-end">
-                              <div className="fw-bold text-success mb-1 mobile-text-small">MRP: ₹{parseFloat(item["MRP"] || 0).toFixed(2)}</div>
+                              <div className="fw-bold text-success mb-1 mobile-text-small">NBP: ₹{parseFloat(item["MRP"] || 0).toFixed(2)}</div>
                               <div className="fw-bold text-info mobile-text-small">Buy: ₹{parseFloat(item["Buy Price"] || 0).toFixed(2)}</div>
                             </div>
                           </div>
@@ -4236,7 +4269,7 @@ export default function QuotationModal() {
                     <div className="card-header bg-light d-flex justify-content-between align-items-center mobile-stack">
                       <h6 className="mb-0">Item Details</h6>
                       <div className="text-end mobile-full-width">
-                        <span className="badge bg-success me-2">MRP: ₹{parseFloat(selectedStockItem["MRP"] || 0).toFixed(2)}</span>
+                        <span className="badge bg-success me-2">NBP: ₹{parseFloat(selectedStockItem["MRP"] || 0).toFixed(2)}</span>
                         <span className="badge bg-info">Buy: ₹{parseFloat(selectedStockItem["Buy Price"] || 0).toFixed(2)}</span>
                       </div>
                     </div>
@@ -4357,7 +4390,7 @@ export default function QuotationModal() {
                       <div className="row mobile-row">
                         <div className="col-md-3">
                           <div className="mb-3">
-                            <label className="form-label">Cut Width</label>
+                            <label className="form-label">Cut Width (mm)</label>
                             <input
                               type="number"
                               className="form-control"
@@ -4370,7 +4403,7 @@ export default function QuotationModal() {
                         </div>
                         <div className="col-md-3">
                           <div className="mb-3">
-                            <label className="form-label">Cut Length</label>
+                            <label className="form-label">Cut Length (M)</label>
                             <input
                               type="number"
                               className="form-control"
@@ -4383,7 +4416,7 @@ export default function QuotationModal() {
                         </div>
                         <div className="col-md-3">
                           <div className="mb-3">
-                            <label className="form-label">MRP</label>
+                            <label className="form-label">NBP</label>
                             <input type="text" className="form-control" value={`₹${parseFloat(selectedStockItem["MRP"] || 0).toFixed(2)}`} readOnly />
                           </div>
                         </div>
@@ -4412,7 +4445,7 @@ export default function QuotationModal() {
                               value={`₹${((parseFloat(selectedStockItem["MRP"] || 0) * (parseFloat(newItemLength) || 0) * (parseFloat(newItemCutWidth) || 0)) || 0).toFixed(2)}`}
                               readOnly
                             />
-                            <small className="text-muted mobile-text-small">MRP × Length × Width</small>
+                            <small className="text-muted mobile-text-small">NBP × Length (M) × Width (mm)</small>
                           </div>
                         </div>
                         <div className="col-md-4">
@@ -4424,7 +4457,7 @@ export default function QuotationModal() {
                               value={((parseFloat(newItemLength) || 0) * (parseFloat(newItemCutWidth) || 0) * (parseFloat(newItemQuantity) || 0)).toFixed(2)}
                               readOnly
                             />
-                            <small className="text-muted mobile-text-small">Length × Width × Quantity</small>
+                            <small className="text-muted mobile-text-small">Length (M) × Width (mm) × Quantity</small>
                           </div>
                         </div>
                         <div className="col-md-4">
@@ -4628,8 +4661,8 @@ export default function QuotationModal() {
                             <th>Item Name</th>
                             <th>Customer Part No</th>
                             <th>Customer Description</th>
-                            <th>Width</th>
-                            <th>Length</th>
+                            <th>Width (mm)</th>
+                            <th>Length (M)</th>
                             <th>Qty</th>
                             <th>Price/Unit</th>
                             <th>GST %</th>
@@ -4732,7 +4765,10 @@ export default function QuotationModal() {
                     </div>
 
                     <div className="mt-3 p-2 bg-light rounded">
-                      <h5>Notes:</h5>
+                      <h5>Notes & Remarks:</h5>
+                      {quotationRemarks && (
+                        <p className="mb-1 mobile-text-small"><strong>Remarks:</strong> {quotationRemarks}</p>
+                      )}
                       <p className="mb-0 mobile-text-small">Please process this quote as per the terms mentioned. All prices are in INR and inclusive of GST. Delivery within 7-10 business days.</p>
                       <p className="mb-0 mt-2 mobile-text-small"><strong>Valid for 30 days from the date of issue.</strong></p>
                     </div>
@@ -4839,8 +4875,8 @@ export default function QuotationModal() {
                           <th>#</th>
                           <th>Item Name</th>
                           <th>Brand Code</th>
-                          <th>Width</th>
-                          <th>Length</th>
+                          <th>Width (mm)</th>
+                          <th>Length (M)</th>
                           <th>Part No</th>
                           <th>Qty</th>
                           <th>Price/Unit</th>
@@ -4992,6 +5028,18 @@ export default function QuotationModal() {
                       </div>
                     </div>
                   </div>
+
+                  {(selectedQuotation.remarks || selectedQuotation.notes_remarks || selectedQuotation.notes) && (
+                    <div className="mt-3 p-2 bg-light rounded">
+                      <h5>Notes & Remarks:</h5>
+                      {(selectedQuotation.remarks || selectedQuotation.notes_remarks) && (
+                        <p className="mb-1 mobile-text-small"><strong>Remarks:</strong> {selectedQuotation.remarks || selectedQuotation.notes_remarks}</p>
+                      )}
+                      {selectedQuotation.notes && (
+                        <p className="mb-0 mobile-text-small">{selectedQuotation.notes}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="modal-footer mobile-btn-group">

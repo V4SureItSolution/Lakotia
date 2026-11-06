@@ -40,6 +40,10 @@ const GRNEntry = () => {
   const [pendingPOs, setPendingPOs] = useState([]);
   const [loadingPOs, setLoadingPOs] = useState(false);
 
+  // Selected Company & Item
+  const [selectedCompanyName, setSelectedCompanyName] = useState("");
+  const [selectedItemKey, setSelectedItemKey] = useState("");
+
   // Selected PO & Auto fields
   const [selectedPoNumber, setSelectedPoNumber] = useState("");
   const [selectedPO, setSelectedPO] = useState(null);
@@ -55,6 +59,31 @@ const GRNEntry = () => {
   const [items, setItems] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [successInfo, setSuccessInfo] = useState(null);
+
+  // Unique company names from pending POs
+  const availableCompanies = Array.from(
+    new Set(pendingPOs.map((p) => p.company_name).filter(Boolean))
+  );
+
+  // Available items for the selected company across its pending POs
+  const availableItems = [];
+  if (selectedCompanyName) {
+    const companyPOs = pendingPOs.filter((p) => p.company_name === selectedCompanyName);
+    companyPOs.forEach((po) => {
+      (po.items || []).forEach((item, idx) => {
+        const bal = Number(item.balance_qty);
+        availableItems.push({
+          po_number: po.po_number,
+          po_date: po.po_date,
+          company_name: po.company_name,
+          itemIdx: idx,
+          item: item,
+          key: `${po.po_number}__${idx}__${item.item_name}`,
+          label: `${item.item_name} (PO: ${po.po_number} | Bal: ${bal} ${item.unit || "PCS"})`,
+        });
+      });
+    });
+  }
 
   // 1. Fetch pending POs on mount
   useEffect(() => {
@@ -84,52 +113,110 @@ const GRNEntry = () => {
     return `${brandPrefix}-${cleanDate}-${seq}`;
   };
 
-  // 2. When PO selection changes, auto-populate all fields
-  const handlePOSelect = (poNum) => {
-    setSelectedPoNumber(poNum);
+  // Handle Company Selection
+  const handleCompanySelect = (compName) => {
+    setSelectedCompanyName(compName);
+    setSelectedItemKey("");
+    setSelectedPoNumber("");
+    setSelectedPO(null);
+    setItems([]);
+    setSuccessInfo(null);
+  };
+
+  // Handle Item Selection - ONLY AFTER selecting company and items all details are autofilled
+  const handleItemSelect = (itemKey) => {
+    setSelectedItemKey(itemKey);
     setSuccessInfo(null);
 
-    if (!poNum) {
+    if (!itemKey || !selectedCompanyName) {
+      setSelectedPoNumber("");
       setSelectedPO(null);
       setItems([]);
       return;
     }
 
-    const po = pendingPOs.find((p) => p.po_number === poNum);
+    if (itemKey === "ALL") {
+      const companyPOs = pendingPOs.filter((p) => p.company_name === selectedCompanyName);
+      if (companyPOs.length === 0) return;
+      const primaryPO = companyPOs[0];
+      setSelectedPoNumber(primaryPO.po_number);
+      setSelectedPO(primaryPO);
+
+      const allItems = [];
+      companyPOs.forEach((po) => {
+        (po.items || []).forEach((item, idx) => {
+          const balance = Number(item.balance_qty) || 0;
+          const poRate = Number(item.po_rate) || 0;
+          allItems.push({
+            selected: balance > 0,
+            item_name: item.item_name,
+            brand: item.brand || "GENERIC",
+            brand_code: item.brand_code || "",
+            brand_description: item.brand_description || "",
+            length: item.length || "",
+            width: item.width || "",
+            unit: item.unit || "PCS",
+            po_number: po.po_number,
+            po_date: po.po_date,
+            total_po_qty: Number(item.total_po_qty) || 0,
+            partial_po_qty: Number(item.delivered_qty) || 0,
+            balance_qty: balance,
+            po_rate: poRate,
+            invoice_quantity: balance,
+            received_quantity: balance,
+            invoice_rate: poRate,
+            batch_code: makeBatchCode(item.brand, idx),
+            transport_charges: 0,
+            other_expense: 0,
+            remarks: "",
+          });
+        });
+      });
+      setItems(allItems);
+      return;
+    }
+
+    // Specific item selected
+    const targetItem = availableItems.find((i) => i.key === itemKey);
+    if (!targetItem) return;
+
+    const po = pendingPOs.find((p) => p.po_number === targetItem.po_number);
     if (!po) return;
 
+    setSelectedPoNumber(po.po_number);
     setSelectedPO(po);
 
-    // Populate items with Auto fields and defaults for to-be-filled fields
-    const newItems = (po.items || []).map((item, idx) => {
-      const balance = Number(item.balance_qty) || 0;
-      const poRate = Number(item.po_rate) || 0;
-      return {
-        selected: balance > 0,
-        item_name: item.item_name,
-        brand: item.brand || "GENERIC",
-        brand_code: item.brand_code || "",
-        brand_description: item.brand_description || "",
-        length: item.length || "",
-        width: item.width || "",
-        unit: item.unit || "PCS",
-        // Auto fields
-        total_po_qty: Number(item.total_po_qty) || 0,
-        partial_po_qty: Number(item.delivered_qty) || 0, // already delivered
-        balance_qty: balance,
-        po_rate: poRate,
-        // Fields to be filled
-        invoice_quantity: balance, // default to balance
-        received_quantity: balance, // default to balance
-        invoice_rate: poRate, // default to PO Rate
-        batch_code: makeBatchCode(item.brand, idx),
-        transport_charges: 0,
-        other_expense: 0,
-        remarks: "",
-      };
-    });
+    const raw = targetItem.item;
+    const balance = Number(raw.balance_qty) || 0;
+    const poRate = Number(raw.po_rate) || 0;
 
-    setItems(newItems);
+    const singleItem = {
+      selected: true,
+      item_name: raw.item_name,
+      brand: raw.brand || "GENERIC",
+      brand_code: raw.brand_code || "",
+      brand_description: raw.brand_description || "",
+      length: raw.length || "",
+      width: raw.width || "",
+      unit: raw.unit || "PCS",
+      po_number: po.po_number,
+      po_date: po.po_date,
+      // Auto fields
+      total_po_qty: Number(raw.total_po_qty) || 0,
+      partial_po_qty: Number(raw.delivered_qty) || 0,
+      balance_qty: balance,
+      po_rate: poRate,
+      // Fields to be filled
+      invoice_quantity: balance,
+      received_quantity: balance,
+      invoice_rate: poRate,
+      batch_code: makeBatchCode(raw.brand, targetItem.itemIdx),
+      transport_charges: 0,
+      other_expense: 0,
+      remarks: "",
+    };
+
+    setItems([singleItem]);
   };
 
   // 3. Handle item changes
@@ -261,6 +348,8 @@ const GRNEntry = () => {
         // Refresh pending POs
         fetchPendingPOs();
         // Reset selections
+        setSelectedCompanyName("");
+        setSelectedItemKey("");
         setSelectedPoNumber("");
         setSelectedPO(null);
         setItems([]);
@@ -345,82 +434,135 @@ const GRNEntry = () => {
 
       {/* Main Form */}
       <Form onSubmit={handleSubmit}>
-        {/* Section 1: Purchase Order & Company Selection */}
+        {/* Section 1: Company & Item Selection */}
         <Card className="shadow-sm mb-4 border-0">
           <Card.Header className="bg-primary text-white py-2 fw-semibold">
-            <FaFileInvoice className="me-2" /> 1. Purchase Order & Company Details
+            <FaFileInvoice className="me-2" /> 1. Select Company & Item
           </Card.Header>
           <Card.Body className="bg-light">
             <Row className="g-3">
-              {/* PO Number (Auto from Pending POs) */}
-              <Col md={4}>
+              {/* Company Name Selection */}
+              <Col md={6}>
                 <Form.Group>
                   <Form.Label className="fw-bold">
-                    PO NO <span className="text-danger">*</span>{" "}
-                    <Badge bg="info" className="text-dark">Auto from Pending POs</Badge>
+                    <FaBuilding className="me-1 text-primary" /> Company Name <span className="text-danger">*</span>
                   </Form.Label>
                   <Form.Select
-                    value={selectedPoNumber}
-                    onChange={(e) => handlePOSelect(e.target.value)}
+                    value={selectedCompanyName}
+                    onChange={(e) => handleCompanySelect(e.target.value)}
                     required
                     className="form-select-lg"
                   >
-                    <option value="">-- Select Pending PO --</option>
-                    {pendingPOs.map((po) => (
-                      <option key={po.po_number} value={po.po_number}>
-                        {po.po_number} — {po.company_name} ({po.items?.length || 0} items)
+                    <option value="">-- Select Company --</option>
+                    {availableCompanies.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
                       </option>
                     ))}
                   </Form.Select>
                   <Form.Text className="text-muted">
                     {loadingPOs
                       ? "Loading pending POs..."
-                      : `${pendingPOs.length} pending Purchase Order(s) available`}
+                      : `${availableCompanies.length} company(ies) with pending purchase orders`}
                   </Form.Text>
                 </Form.Group>
               </Col>
 
-              {/* PO Date (Auto) */}
-              <Col md={3}>
+              {/* Item Name Selection */}
+              <Col md={6}>
                 <Form.Group>
                   <Form.Label className="fw-bold">
-                    PO Date <Badge bg="secondary">Auto</Badge>
+                    <FaBox className="me-1 text-primary" /> Item Name <span className="text-danger">*</span>
                   </Form.Label>
-                  <InputGroup>
-                    <InputGroup.Text><FaCalendarAlt /></InputGroup.Text>
-                    <Form.Control
-                      type="text"
-                      readOnly
-                      value={selectedPO?.po_date || "-"}
-                      className="bg-white"
-                      placeholder="Auto from PO"
-                    />
-                  </InputGroup>
-                </Form.Group>
-              </Col>
-
-              {/* Company Name (Auto) */}
-              <Col md={5}>
-                <Form.Group>
-                  <Form.Label className="fw-bold">
-                    Company Name <Badge bg="secondary">Auto</Badge>
-                  </Form.Label>
-                  <InputGroup>
-                    <InputGroup.Text><FaBuilding /></InputGroup.Text>
-                    <Form.Control
-                      type="text"
-                      readOnly
-                      value={selectedPO?.company_name || "-"}
-                      className="bg-white fw-semibold text-primary"
-                      placeholder="Auto from PO"
-                    />
-                  </InputGroup>
+                  <Form.Select
+                    value={selectedItemKey}
+                    onChange={(e) => handleItemSelect(e.target.value)}
+                    disabled={!selectedCompanyName}
+                    required
+                    className="form-select-lg"
+                  >
+                    <option value="">
+                      -- {selectedCompanyName ? "Select Item" : "Select Company First"} --
+                    </option>
+                    {availableItems.length > 1 && (
+                      <option value="ALL">All Items ({availableItems.length} items)</option>
+                    )}
+                    {availableItems.map((it) => (
+                      <option key={it.key} value={it.key}>
+                        {it.label}
+                      </option>
+                    ))}
+                  </Form.Select>
+                  <Form.Text className="text-muted">
+                    {selectedCompanyName
+                      ? `${availableItems.length} item(s) pending for ${selectedCompanyName}`
+                      : "Select a company first to choose its items"}
+                  </Form.Text>
                 </Form.Group>
               </Col>
             </Row>
 
-            {/* Additional Invoice Details */}
-            {selectedPO && (
+            {/* Autofilled PO Info Banner (Shown ONLY after selecting company and item) */}
+            {selectedCompanyName && selectedItemKey && selectedPO && (
+              <Row className="g-3 mt-2 pt-2 border-top">
+                <Col md={4}>
+                  <Form.Group>
+                    <Form.Label className="fw-bold small text-muted">
+                      PO NO <Badge bg="info" className="text-dark">Auto from Pending PO records</Badge>
+                    </Form.Label>
+                    <InputGroup>
+                      <InputGroup.Text><FaFileInvoice /></InputGroup.Text>
+                      <Form.Control
+                        type="text"
+                        readOnly
+                        value={selectedPO.po_number}
+                        className="bg-white fw-bold text-primary"
+                        placeholder="Auto from PO"
+                      />
+                    </InputGroup>
+                  </Form.Group>
+                </Col>
+
+                <Col md={4}>
+                  <Form.Group>
+                    <Form.Label className="fw-bold small text-muted">
+                      PO Date <Badge bg="secondary">Auto</Badge>
+                    </Form.Label>
+                    <InputGroup>
+                      <InputGroup.Text><FaCalendarAlt /></InputGroup.Text>
+                      <Form.Control
+                        type="text"
+                        readOnly
+                        value={selectedPO.po_date || "-"}
+                        className="bg-white"
+                        placeholder="Auto from PO"
+                      />
+                    </InputGroup>
+                  </Form.Group>
+                </Col>
+
+                <Col md={4}>
+                  <Form.Group>
+                    <Form.Label className="fw-bold small text-muted">
+                      Company Name <Badge bg="secondary">Auto</Badge>
+                    </Form.Label>
+                    <InputGroup>
+                      <InputGroup.Text><FaBuilding /></InputGroup.Text>
+                      <Form.Control
+                        type="text"
+                        readOnly
+                        value={selectedPO.company_name || selectedCompanyName}
+                        className="bg-white fw-semibold"
+                        placeholder="Auto from PO"
+                      />
+                    </InputGroup>
+                  </Form.Group>
+                </Col>
+              </Row>
+            )}
+
+            {/* Additional Invoice Details (Shown ONLY after selecting company and item) */}
+            {selectedCompanyName && selectedItemKey && selectedPO && (
               <Row className="g-3 mt-1 pt-2 border-top">
                 <Col md={3}>
                   <Form.Group>
@@ -489,8 +631,20 @@ const GRNEntry = () => {
           </Card.Body>
         </Card>
 
+        {/* Guidance Prompt when company and item are NOT selected yet */}
+        {(!selectedCompanyName || !selectedItemKey) && (
+          <Alert variant="info" className="text-center py-4 border shadow-sm mb-4">
+            <FaInfoCircle className="text-primary fs-3 mb-2 d-block mx-auto" />
+            <h6 className="fw-bold text-dark">Autofill Details on Company & Item Selection</h6>
+            <p className="text-muted mb-0 small">
+              Please select the <strong>Company Name</strong> and <strong>Item Name</strong> above.
+              Once selected, all PO details, balances, rates, and batch information will be autofilled automatically.
+            </p>
+          </Alert>
+        )}
+
         {/* Section 2: Items to Receive */}
-        {selectedPO && (
+        {selectedPO && selectedCompanyName && selectedItemKey && (
           <Card className="shadow-sm mb-4 border-0">
             <Card.Header className="bg-dark text-white py-2 d-flex justify-content-between align-items-center">
               <span>
@@ -570,6 +724,13 @@ const GRNEntry = () => {
                           {/* Item Name */}
                           <td className="text-start">
                             <strong className="text-primary">{item.item_name}</strong>
+                            {(item.length || item.width) && (
+                              <div className="text-muted small">
+                                Size: {item.length ? `${item.length} M` : ""}
+                                {item.length && item.width ? " × " : ""}
+                                {item.width ? `${item.width} mm` : ""}
+                              </div>
+                            )}
                             {item.brand && (
                               <div className="text-muted small">
                                 Brand: {item.brand} ({item.unit})
@@ -717,7 +878,7 @@ const GRNEntry = () => {
         )}
 
         {/* Section 3: Summary & Submission */}
-        {selectedPO && selectedItems.length > 0 && (
+        {selectedPO && selectedCompanyName && selectedItemKey && selectedItems.length > 0 && (
           <Card className="shadow-sm border-0 mb-4 bg-light">
             <Card.Body>
               <Row className="align-items-center">

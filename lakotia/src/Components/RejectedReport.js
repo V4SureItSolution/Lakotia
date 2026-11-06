@@ -906,10 +906,10 @@ export default function RejectedItemsPage() {
             <h5>Technical Specifications:</h5>
             <div class="row">
               <div class="col-3">
-                <p class="mb-1"><strong>Cut Width:</strong> ${item.cut_width || "N/A"}</p>
+                <p class="mb-1"><strong>Cut Width (mm):</strong> ${item.cut_width || "N/A"}</p>
               </div>
               <div class="col-3">
-                <p class="mb-1"><strong>Cut Length:</strong> ${item.length || "N/A"}</p>
+                <p class="mb-1"><strong>Cut Length (M):</strong> ${item.length || "N/A"}</p>
               </div>
               <div class="col-3">
                 <p class="mb-1"><strong>Count:</strong> ${item.count || 1}</p>
@@ -1335,10 +1335,10 @@ export default function RejectedItemsPage() {
                 <Card.Body>
                   <Row>
                     <div className="col-3">
-                      <p className="mb-1"><strong>Cut Width:</strong> {selectedRejectedItem.cut_width || "N/A"}</p>
+                      <p className="mb-1"><strong>Cut Width (mm):</strong> {selectedRejectedItem.cut_width || "N/A"}</p>
                     </div>
                     <div className="col-3">
-                      <p className="mb-1"><strong>Cut Length:</strong> {selectedRejectedItem.length || "N/A"}</p>
+                      <p className="mb-1"><strong>Cut Length (M):</strong> {selectedRejectedItem.length || "N/A"}</p>
                     </div>
                     <div className="col-3">
                       <p className="mb-1"><strong>Count:</strong> {selectedRejectedItem.count || 1}</p>

@@ -1116,14 +1116,14 @@ const GRNPage = () => {
                                       className="form-control form-control-sm me-1"
                                       value={item.length || ""}
                                       onChange={(e) => handleItemChange(index, 'length', e.target.value)}
-                                      placeholder="L"
+                                      placeholder="L (M)"
                                     />
                                     <input
                                       type="text"
                                       className="form-control form-control-sm"
                                       value={item.width || ""}
                                       onChange={(e) => handleItemChange(index, 'width', e.target.value)}
-                                      placeholder="W"
+                                      placeholder="W (mm)"
                                     />
                                   </div>
                                 </div>
@@ -1332,7 +1332,7 @@ const GRNPage = () => {
                               <th>Item Name</th>
                               <th>Brand</th>
                               <th>HSN</th>
-                              <th>Size</th>
+                              <th>Size (L[M]×W[mm])</th>
                               <th>Qty</th>
                               <th>Buy Price</th>
                               <th>Total</th>
