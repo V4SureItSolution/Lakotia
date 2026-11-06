@@ -117,6 +117,7 @@ export default function QuotationModal() {
   const [items, setItems] = useState(() => []);
 
   const [stockItems, setStockItems] = useState([]);
+  const [allStockBatches, setAllStockBatches] = useState([]);
   const [loadingStock, setLoadingStock] = useState(false);
   const [stockError, setStockError] = useState(null);
 
@@ -546,58 +547,41 @@ export default function QuotationModal() {
     fetchCompanies();
   }, [showCompanyModal, showEditModal]);
 
-  useEffect(() => {
-    if (!showItemsModal && !showEditModal) return;
-
-    const fetchStockItems = async () => {
-      setLoadingStock(true);
-      setStockError(null);
-      try {
-        const response = await axios.get(`${API_BASE}/stock/all`, {
-          timeout: 5000,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-
-        let stockData = [];
-
-        if (response.data.success && Array.isArray(response.data.data)) {
-          stockData = response.data.data;
-        } else if (Array.isArray(response.data)) {
-          stockData = response.data;
+  // Fetch stock items on mount and whenever items modal or item popup opens
+  const fetchStockItems = async () => {
+    setLoadingStock(true);
+    setStockError(null);
+    try {
+      const response = await axios.get(`${API_BASE}/stock/all`, {
+        timeout: 5000,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
         }
+      });
 
-        const uniqueStockData = Array.from(
-          new Map(stockData.map(item => [item["Brand Code"], item])).values()
-        );
+      let stockData = [];
 
-        setStockItems(uniqueStockData);
+      if (response.data && response.data.success && Array.isArray(response.data.data)) {
+        stockData = response.data.data;
+      } else if (Array.isArray(response.data)) {
+        stockData = response.data;
+      }
 
-        if (uniqueStockData.length === 0) {
-          const mockStock = [
-            {
-              "id": 1,
-              "Item Name": "Premium Cutter Blade",
-              "Brand": "Bosch",
-              "Brand Code": "BOS-PCB-001",
-              "Brand Description": "High precision cutting blade for metal",
-              "HSN": "84659310",
-              "Batch Code": "BATCH-2024-001",
-              "MRP": 1250.00,
-              "Buy Price": 850.00,
-              "Width": 10,
-              "Length": 200,
-              "Unit": "pcs"
-            }
-          ];
-          setStockItems(mockStock);
-          setStockError("Using mock stock data. Real API failed.");
+      setAllStockBatches(stockData);
+
+      // Unique items by Brand Code / Item Name for the search dropdown list
+      const uniqueStockMap = new Map();
+      stockData.forEach(item => {
+        const key = item["Brand Code"] || item["Item Name"];
+        if (key && !uniqueStockMap.has(key)) {
+          uniqueStockMap.set(key, item);
         }
+      });
+      const uniqueStockData = Array.from(uniqueStockMap.values());
+      setStockItems(uniqueStockData.length > 0 ? uniqueStockData : stockData);
 
-      } catch (err) {
-        console.error("Fetch stock failed:", err);
+      if (stockData.length === 0) {
         const mockStock = [
           {
             "id": 1,
@@ -609,20 +593,53 @@ export default function QuotationModal() {
             "Batch Code": "BATCH-2024-001",
             "MRP": 1250.00,
             "Buy Price": 850.00,
+            "Qty": 100,
             "Width": 10,
             "Length": 200,
             "Unit": "pcs"
           }
         ];
+        setAllStockBatches(mockStock);
         setStockItems(mockStock);
-        setStockError("Using mock stock data. API Error: " + (err.message || "Connection failed"));
-      } finally {
-        setLoadingStock(false);
+        setStockError("Using mock stock data. Real API returned empty.");
       }
-    };
 
+    } catch (err) {
+      console.error("Fetch stock failed:", err);
+      const mockStock = [
+        {
+          "id": 1,
+          "Item Name": "Premium Cutter Blade",
+          "Brand": "Bosch",
+          "Brand Code": "BOS-PCB-001",
+          "Brand Description": "High precision cutting blade for metal",
+          "HSN": "84659310",
+          "Batch Code": "BATCH-2024-001",
+          "MRP": 1250.00,
+          "Buy Price": 850.00,
+          "Qty": 100,
+          "Width": 10,
+          "Length": 200,
+          "Unit": "pcs"
+        }
+      ];
+      setAllStockBatches(mockStock);
+      setStockItems(mockStock);
+      setStockError("Using mock stock data. API Error: " + (err.message || "Connection failed"));
+    } finally {
+      setLoadingStock(false);
+    }
+  };
+
+  useEffect(() => {
     fetchStockItems();
-  }, [showItemsModal, showEditModal]);
+  }, []);
+
+  useEffect(() => {
+    if (showItemsModal || showEditModal || showItemPopup) {
+      fetchStockItems();
+    }
+  }, [showItemsModal, showEditModal, showItemPopup]);
 
   const handleBillToSearch = (searchTerm) => {
     setBillTo(searchTerm);
@@ -4207,12 +4224,32 @@ export default function QuotationModal() {
                             setItemSearchTerm(item["Item Name"] || "");
                             setNewItemBrandCode(item["Brand Code"] || "");
                             setShowResults(false);
-                            const allBatchCodes = stockItems
-                              .filter(stockItem => stockItem["Brand Code"] === item["Brand Code"])
+
+                            // Find all batches for this item from allStockBatches
+                            const matchingBatches = allStockBatches.filter(stockItem =>
+                              (item["Brand Code"] && stockItem["Brand Code"] === item["Brand Code"]) ||
+                              (item["Item Name"] && stockItem["Item Name"] === item["Item Name"])
+                            );
+
+                            const allBatchCodes = matchingBatches
                               .map(stockItem => stockItem["Batch Code"])
                               .filter(Boolean);
-                            setAvailableBatchCodes(Array.from(new Set(allBatchCodes)));
+                            const uniqueBatchCodes = Array.from(new Set(allBatchCodes));
+                            setAvailableBatchCodes(uniqueBatchCodes);
                             setNewItemSupplierPartNo(item["Brand Code"] || "");
+
+                            // Default select the first batch if available
+                            if (matchingBatches.length > 0) {
+                              const firstBatch = matchingBatches[0];
+                              setNewItemBatchCode(firstBatch["Batch Code"] || "");
+                              if (firstBatch["Width"]) setNewItemCutWidth(firstBatch["Width"]);
+                              if (firstBatch["Length"]) setNewItemLength(firstBatch["Length"]);
+                              setSelectedStockItem(firstBatch);
+                            } else {
+                              setNewItemBatchCode(item["Batch Code"] || "");
+                              if (item["Width"]) setNewItemCutWidth(item["Width"]);
+                              if (item["Length"]) setNewItemLength(item["Length"]);
+                            }
                           }}
                         >
                           <div className="d-flex justify-content-between align-items-start mb-2 mobile-stack">
@@ -4264,6 +4301,124 @@ export default function QuotationModal() {
                   )}
                 </div>
 
+                {/* Stock Report with batch code, batch qty, and batch price displayed just below item selection */}
+                {selectedStockItem && (() => {
+                  const matchingBatches = allStockBatches.filter(s =>
+                    (selectedStockItem["Brand Code"] && s["Brand Code"] === selectedStockItem["Brand Code"]) ||
+                    (selectedStockItem["Item Name"] && s["Item Name"] === selectedStockItem["Item Name"])
+                  );
+                  return (
+                    <div className="card mt-3 border-primary shadow-sm mobile-card">
+                      <div className="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2 mobile-stack">
+                        <h6 className="mb-0 fw-bold">
+                          <i className="bi bi-boxes me-2"></i>Stock Report (Batches in Stock)
+                        </h6>
+                        <span className="badge bg-light text-primary fw-bold">
+                          {matchingBatches.length} Batch(es) Available
+                        </span>
+                      </div>
+                      <div className="card-body p-0">
+                        {matchingBatches.length > 0 ? (
+                          <div className="table-responsive" style={{ maxHeight: "200px", overflowY: "auto" }}>
+                            <table className="table table-sm table-hover table-bordered mb-0 align-middle text-center">
+                              <thead className="table-light sticky-top">
+                                <tr>
+                                  <th style={{ width: "45px" }}>Select</th>
+                                  <th>Batch Code</th>
+                                  <th>Batch Qty</th>
+                                  <th>Batch Price (Buy)</th>
+                                  <th>NBP</th>
+                                  <th>Size (L[M] × W[mm])</th>
+                                  <th style={{ width: "90px" }}>Action</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {matchingBatches.map((batch, bIdx) => {
+                                  const isSelected = (newItemBatchCode && batch["Batch Code"] === newItemBatchCode) || (!newItemBatchCode && bIdx === 0);
+                                  const bQty = Number(batch["Qty"] ?? batch["quantity"] ?? 0);
+                                  const buyPrice = Number(batch["Buy Price"] ?? 0);
+                                  const mrpVal = Number(batch["MRP"] ?? 0);
+                                  const selectThisBatch = () => {
+                                    setNewItemBatchCode(batch["Batch Code"] || "");
+                                    if (batch["Width"]) setNewItemCutWidth(batch["Width"]);
+                                    if (batch["Length"]) setNewItemLength(batch["Length"]);
+                                    setSelectedStockItem(prev => ({
+                                      ...prev,
+                                      ...batch,
+                                      "Batch Code": batch["Batch Code"],
+                                      "Buy Price": buyPrice,
+                                      "MRP": mrpVal,
+                                      "Qty": bQty,
+                                    }));
+                                  };
+                                  return (
+                                    <tr
+                                      key={batch.id || bIdx}
+                                      className={isSelected ? "table-primary fw-bold" : ""}
+                                      style={{ cursor: "pointer" }}
+                                      onClick={selectThisBatch}
+                                    >
+                                      <td>
+                                        <input
+                                          type="radio"
+                                          name="stockBatchRadio"
+                                          className="form-check-input"
+                                          checked={isSelected}
+                                          onChange={selectThisBatch}
+                                        />
+                                      </td>
+                                      <td>
+                                        <span className="badge bg-dark font-monospace">
+                                          {batch["Batch Code"] || "-"}
+                                        </span>
+                                      </td>
+                                      <td>
+                                        <span className={`badge ${bQty > 0 ? "bg-success" : "bg-danger"}`}>
+                                          {bQty} {batch["Unit"] || "PCS"}
+                                        </span>
+                                      </td>
+                                      <td className="text-info fw-bold">
+                                        ₹{buyPrice.toFixed(2)}
+                                      </td>
+                                      <td className="text-success fw-bold">
+                                        ₹{mrpVal.toFixed(2)}
+                                      </td>
+                                      <td className="small text-muted">
+                                        {batch["Length"] ? `${batch["Length"]} M` : "-"} × {batch["Width"] ? `${batch["Width"]} mm` : "-"}
+                                      </td>
+                                      <td>
+                                        {isSelected ? (
+                                          <span className="badge bg-primary">Selected</span>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline-primary py-0 px-2"
+                                            style={{ fontSize: "0.75rem" }}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              selectThisBatch();
+                                            }}
+                                          >
+                                            Select
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="p-3 text-center text-muted small">
+                            <i className="bi bi-info-circle me-1"></i>No batch records found in stock for this item.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {selectedStockItem && (
                   <div className="card mt-3 mobile-card">
                     <div className="card-header bg-light d-flex justify-content-between align-items-center mobile-stack">
@@ -4313,11 +4468,20 @@ export default function QuotationModal() {
                                 const selectedBatch = e.target.value;
                                 setNewItemBatchCode(selectedBatch);
                                 if (selectedBatch && selectedStockItem) {
-                                  const matchingStock = stockItems.find(
-                                    s => s["Brand Code"] === selectedStockItem["Brand Code"] && s["Batch Code"] === selectedBatch
+                                  const matchingStock = allStockBatches.find(
+                                    s => ((selectedStockItem["Brand Code"] && s["Brand Code"] === selectedStockItem["Brand Code"]) ||
+                                          (selectedStockItem["Item Name"] && s["Item Name"] === selectedStockItem["Item Name"])) &&
+                                         s["Batch Code"] === selectedBatch
                                   );
                                   if (matchingStock) {
-                                    setSelectedStockItem(matchingStock);
+                                    setSelectedStockItem(prev => ({
+                                      ...prev,
+                                      ...matchingStock,
+                                      "Batch Code": matchingStock["Batch Code"],
+                                      "Buy Price": Number(matchingStock["Buy Price"] ?? 0),
+                                      "MRP": Number(matchingStock["MRP"] ?? 0),
+                                      "Qty": Number(matchingStock["Qty"] ?? matchingStock["quantity"] ?? 0),
+                                    }));
                                     if (matchingStock["Width"]) setNewItemCutWidth(matchingStock["Width"]);
                                     if (matchingStock["Length"]) setNewItemLength(matchingStock["Length"]);
                                   }
@@ -4326,23 +4490,28 @@ export default function QuotationModal() {
                             >
                               <option value="">-- Select --</option>
                               {(() => {
+                                const matchingBatches = allStockBatches.filter(s =>
+                                  ((selectedStockItem["Brand Code"] && s["Brand Code"] === selectedStockItem["Brand Code"]) ||
+                                   (selectedStockItem["Item Name"] && s["Item Name"] === selectedStockItem["Item Name"])) &&
+                                  s["Batch Code"]
+                                );
                                 const batchMap = new Map();
-                                stockItems
-                                  .filter(s => s["Brand Code"] === selectedStockItem["Brand Code"] && s["Batch Code"])
-                                  .forEach(s => {
-                                    const code = s["Batch Code"];
-                                    const availQty = s["Qty"] ?? s["quantity"] ?? s["Available Qty"] ?? s["Qty (Pcs)"] ?? 0;
-                                    if (!batchMap.has(code)) {
-                                      const dim = s["Width"] && s["Length"]
-                                        ? `${s["Width"]} × ${s["Length"]} ${s["Unit"] || "mm"}`
-                                        : "";
-                                      batchMap.set(code, {
-                                        code,
-                                        availQty,
-                                        label: dim ? `${code} (${dim} | Avail Qty: ${availQty})` : `${code} (Avail Qty: ${availQty})`
-                                      });
-                                    }
-                                  });
+                                matchingBatches.forEach(s => {
+                                  const code = s["Batch Code"];
+                                  const availQty = s["Qty"] ?? s["quantity"] ?? s["Available Qty"] ?? s["Qty (Pcs)"] ?? 0;
+                                  const buyPrice = Number(s["Buy Price"] ?? 0);
+                                  const mrpPrice = Number(s["MRP"] ?? 0);
+                                  if (!batchMap.has(code)) {
+                                    const dim = s["Width"] && s["Length"]
+                                      ? `${s["Length"]} M × ${s["Width"]} mm`
+                                      : "";
+                                    batchMap.set(code, {
+                                      code,
+                                      availQty,
+                                      label: `${code} | Qty: ${availQty} | Buy: ₹${buyPrice.toFixed(2)} | NBP: ₹${mrpPrice.toFixed(2)}${dim ? ` | ${dim}` : ""}`
+                                    });
+                                  }
+                                });
                                 const options = Array.from(batchMap.values());
                                 if (options.length === 0 && availableBatchCodes.length > 0) {
                                   return availableBatchCodes.map((code, idx) => (

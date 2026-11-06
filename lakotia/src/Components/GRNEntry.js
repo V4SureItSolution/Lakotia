@@ -29,6 +29,7 @@ import {
   FaInfoCircle,
   FaBarcode,
   FaHistory,
+  FaCopy,
 } from "react-icons/fa";
 import { API_BASE } from "../config";
 
@@ -60,6 +61,9 @@ const GRNEntry = () => {
   const [submitting, setSubmitting] = useState(false);
   const [successInfo, setSuccessInfo] = useState(null);
 
+  // Cached existing batch codes from database to guarantee uniqueness
+  const [existingBatchCodes, setExistingBatchCodes] = useState(new Set());
+
   // Unique company names from pending POs
   const availableCompanies = Array.from(
     new Set(pendingPOs.map((p) => p.company_name).filter(Boolean))
@@ -85,9 +89,10 @@ const GRNEntry = () => {
     });
   }
 
-  // 1. Fetch pending POs on mount
+  // 1. Fetch pending POs and existing batch codes on mount
   useEffect(() => {
     fetchPendingPOs();
+    fetchAllBatchCodes();
   }, []);
 
   const fetchPendingPOs = async () => {
@@ -105,12 +110,39 @@ const GRNEntry = () => {
     }
   };
 
-  // Helper to generate a default batch code
-  const makeBatchCode = (brand, itemIdx) => {
+  const fetchAllBatchCodes = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/grn/all-batch-codes`);
+      if (res.data.success && Array.isArray(res.data.data)) {
+        setExistingBatchCodes(new Set(res.data.data));
+      }
+    } catch (err) {
+      console.error("Error fetching existing batch codes:", err);
+    }
+  };
+
+  // Helper to generate a guaranteed unique batch code for each item
+  const generateUniqueBatchCode = (brand, usedCodesSet = new Set()) => {
     const brandPrefix = (brand || "GEN").slice(0, 3).toUpperCase();
     const cleanDate = todayDate.replace(/-/g, "");
-    const seq = String(itemIdx + 1).padStart(3, "0");
-    return `${brandPrefix}-${cleanDate}-${seq}`;
+    let seq = 1;
+    while (true) {
+      const seqStr = String(seq).padStart(3, "0");
+      const candidate = `${brandPrefix}-${cleanDate}-${seqStr}`;
+      if (!existingBatchCodes.has(candidate) && !usedCodesSet.has(candidate)) {
+        usedCodesSet.add(candidate);
+        return candidate;
+      }
+      seq++;
+      if (seq > 999) {
+        const randSuffix = Math.floor(1000 + Math.random() * 9000);
+        const fallback = `${brandPrefix}-${cleanDate}-${randSuffix}`;
+        if (!existingBatchCodes.has(fallback) && !usedCodesSet.has(fallback)) {
+          usedCodesSet.add(fallback);
+          return fallback;
+        }
+      }
+    }
   };
 
   // Handle Company Selection
@@ -142,11 +174,13 @@ const GRNEntry = () => {
       setSelectedPoNumber(primaryPO.po_number);
       setSelectedPO(primaryPO);
 
+      const usedCodes = new Set();
       const allItems = [];
       companyPOs.forEach((po) => {
         (po.items || []).forEach((item, idx) => {
           const balance = Number(item.balance_qty) || 0;
           const poRate = Number(item.po_rate) || 0;
+          const batchCode = generateUniqueBatchCode(item.brand, usedCodes);
           allItems.push({
             selected: balance > 0,
             item_name: item.item_name,
@@ -165,7 +199,7 @@ const GRNEntry = () => {
             invoice_quantity: balance,
             received_quantity: balance,
             invoice_rate: poRate,
-            batch_code: makeBatchCode(item.brand, idx),
+            batch_code: batchCode,
             transport_charges: 0,
             other_expense: 0,
             remarks: "",
@@ -189,6 +223,8 @@ const GRNEntry = () => {
     const raw = targetItem.item;
     const balance = Number(raw.balance_qty) || 0;
     const poRate = Number(raw.po_rate) || 0;
+    const usedCodes = new Set();
+    const batchCode = generateUniqueBatchCode(raw.brand, usedCodes);
 
     const singleItem = {
       selected: true,
@@ -210,7 +246,7 @@ const GRNEntry = () => {
       invoice_quantity: balance,
       received_quantity: balance,
       invoice_rate: poRate,
-      batch_code: makeBatchCode(raw.brand, targetItem.itemIdx),
+      batch_code: batchCode,
       transport_charges: 0,
       other_expense: 0,
       remarks: "",
@@ -238,14 +274,6 @@ const GRNEntry = () => {
       };
       return updated;
     });
-  };
-
-  // 5. Regenerate batch code for single item
-  const handleRegenerateBatch = (index) => {
-    const item = items[index];
-    const newCode = makeBatchCode(item.brand, index + Math.floor(Math.random() * 900 + 100));
-    handleItemFieldChange(index, "batch_code", newCode);
-    toast.info(`Generated batch code: ${newCode}`);
   };
 
   // Calculations
@@ -301,6 +329,13 @@ const GRNEntry = () => {
       }
     }
 
+    // Verify all submitted items have unique batch codes
+    const batchCodes = selectedItems.map((i) => i.batch_code?.trim()).filter(Boolean);
+    if (new Set(batchCodes).size !== batchCodes.length) {
+      toast.error("Duplicate batch codes detected! Every item must have a unique batch code.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const payload = {
@@ -345,8 +380,9 @@ const GRNEntry = () => {
           companyName: selectedPO.company_name,
         });
 
-        // Refresh pending POs
+        // Refresh pending POs & batch codes
         fetchPendingPOs();
+        fetchAllBatchCodes();
         // Reset selections
         setSelectedCompanyName("");
         setSelectedItemKey("");
@@ -695,7 +731,7 @@ const GRNEntry = () => {
                       <th style={{ width: "170px" }}>
                         Batch Code
                         <br />
-                        <small className="text-primary">(To be filled)</small>
+                        <small className="text-muted">(Auto Generated)</small>
                       </th>
                       <th style={{ width: "140px" }}>
                         Remarks
@@ -826,30 +862,30 @@ const GRNEntry = () => {
                             />
                           </td>
 
-                          {/* Batch Code (To be filled) */}
+                          {/* Batch Code (Auto generated, Unique, Non-editable) */}
                           <td>
                             <InputGroup size="sm">
                               <Form.Control
                                 type="text"
-                                disabled={!item.selected}
+                                readOnly
                                 value={item.batch_code}
-                                onChange={(e) =>
-                                  handleItemFieldChange(
-                                    idx,
-                                    "batch_code",
-                                    e.target.value
-                                  )
-                                }
-                                placeholder="Batch Code"
-                                className="font-monospace"
+                                placeholder="Auto Batch Code"
+                                className="font-monospace text-center fw-bold text-dark"
+                                style={{ backgroundColor: "#e9ecef", cursor: "not-allowed" }}
+                                title="Batch code is auto-generated and unique for each item. Editing is disabled."
                               />
                               <Button
                                 variant="outline-secondary"
-                                title="Regenerate Batch Code"
-                                disabled={!item.selected}
-                                onClick={() => handleRegenerateBatch(idx)}
+                                title="Copy Batch Code"
+                                disabled={!item.batch_code}
+                                onClick={() => {
+                                  if (item.batch_code) {
+                                    navigator.clipboard.writeText(item.batch_code);
+                                    toast.info(`Copied: ${item.batch_code}`);
+                                  }
+                                }}
                               >
-                                <FaBarcode />
+                                <FaCopy />
                               </Button>
                             </InputGroup>
                           </td>

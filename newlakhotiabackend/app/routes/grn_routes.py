@@ -487,9 +487,9 @@ def generate_invoice_number():
 
 
 # -------------------------------------------------------------------
-# GENERATE BATCH CODE
+# GENERATE BATCH CODE (Guaranteed Unique)
 # -------------------------------------------------------------------
-def generate_batch_code(brand, po_number, date_str=None):
+def generate_batch_code(brand, po_number=None, date_str=None, exclude_codes=None):
     if not brand:
         brand = "GEN"
     
@@ -498,14 +498,21 @@ def generate_batch_code(brand, po_number, date_str=None):
     if not date_str:
         date_str = today.strftime("%Y%m%d")
     
-    # Count existing batch codes with same brand and date
+    if exclude_codes is None:
+        exclude_codes = set()
+    
+    # Count existing batch codes with same brand and date as base
     count = GRN.query.filter(
         GRN.batch_code.like(f'{brand_code}-{date_str}-%')
     ).count()
     
-    count += 1
-    
-    return f"{brand_code}-{date_str}-{str(count).zfill(3)}"
+    seq = count + 1
+    while True:
+        candidate = f"{brand_code}-{date_str}-{str(seq).zfill(3)}"
+        if candidate not in exclude_codes and not GRN.query.filter_by(batch_code=candidate).first():
+            exclude_codes.add(candidate)
+            return candidate
+        seq += 1
 
 
 # -------------------------------------------------------------------
@@ -612,26 +619,21 @@ def save_grn_from_po():
         
         # Save each item
         saved_items = []
+        used_batch_codes = set()
         for item in items:
             item_name = item.get("item_name")
             new_qty = float(item.get("quantity", 0))
             
-            # Use provided batch code or generate new one
-            batch_code = item.get('batch_code')
-            if not batch_code or batch_code.strip() == '':
+            # Use provided batch code or auto-generate a guaranteed unique one
+            batch_code = (item.get('batch_code') or '').strip()
+            if not batch_code or batch_code in used_batch_codes or GRN.query.filter_by(batch_code=batch_code).first():
                 batch_code = generate_batch_code(
                     item.get("brand", ""),
                     po_number,
-                    today_date.strftime("%Y%m%d")
+                    today_date.strftime("%Y%m%d"),
+                    used_batch_codes
                 )
-            
-            # Validate batch code doesn't already exist
-            existing_batch = GRN.query.filter_by(batch_code=batch_code).first()
-            if existing_batch:
-                return jsonify({
-                    "success": False, 
-                    "message": f"Batch code '{batch_code}' already exists! Please use a unique batch code."
-                }), 400
+            used_batch_codes.add(batch_code)
             
             # Find original ordered quantity for this item
             ordered_qty = 0.0
@@ -1442,6 +1444,7 @@ def create_direct_grn():
         from sqlalchemy.orm.attributes import flag_modified
 
         saved_grn_records = []
+        used_batch_codes = set()
         
         # Calculate existing deliveries for this PO
         existing_deliveries = GRN.query.filter_by(po_number=po_number, status='active').all()
@@ -1473,9 +1476,10 @@ def create_direct_grn():
             unit = item.get("unit") or po_item.get("unit", "PCS")
             original_qty = float(item.get("total_po_qty") or po_item.get("quantity", 0))
 
-            # Auto-generate batch code if not provided
-            if not batch_code:
-                batch_code = generate_batch_code(brand, po_number, datetime.now().strftime("%Y%m%d"))
+            # Auto-generate guaranteed unique batch code if not provided or if duplicate
+            if not batch_code or batch_code in used_batch_codes or GRN.query.filter_by(batch_code=batch_code).first():
+                batch_code = generate_batch_code(brand, po_number, datetime.now().strftime("%Y%m%d"), used_batch_codes)
+            used_batch_codes.add(batch_code)
 
             # Delivery sequence
             prev_seq_count = GRN.query.filter_by(po_number=po_number, item_name=item_name, status="active").count()

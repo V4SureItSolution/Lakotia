@@ -101,7 +101,7 @@ const GRNPage = () => {
   };
   
   // Generate unique batch code with duplicate prevention
-  const generateUniqueBatchCode = async (brand, date, index, retryCount = 0) => {
+  const generateUniqueBatchCode = async (brand, date, index, retryCount = 0, usedCodesInRun = new Set()) => {
     const brandPrefix = (brand || "GEN").substring(0, 3).toUpperCase();
     const formattedDate = date.replace(/-/g, "");
     let sequence = String(index + 1).padStart(3, '0');
@@ -120,14 +120,15 @@ const GRNPage = () => {
     }
     
     // Check if batch code already exists
-    if (existingBatchCodes.has(batchCode) || batchCodeExistsInCurrentItems(batchCode)) {
-      if (retryCount < 10) {
+    if (existingBatchCodes.has(batchCode) || batchCodeExistsInCurrentItems(batchCode) || usedCodesInRun.has(batchCode)) {
+      if (retryCount < 20) {
         // Recursively try with incremented retry count
-        return generateUniqueBatchCode(brand, date, index + 100, retryCount + 1);
+        return generateUniqueBatchCode(brand, date, index + 1, retryCount + 1, usedCodesInRun);
       } else {
         // Fallback with timestamp
-        const timestamp = Date.now().toString().slice(-6);
-        batchCode = `${brandPrefix}-${formattedDate}-${timestamp}`;
+        const timestamp = Date.now().toString().slice(-4);
+        const rand = Math.floor(100 + Math.random() * 900);
+        batchCode = `${brandPrefix}-${formattedDate}-${timestamp}${rand}`;
       }
     }
     
@@ -144,6 +145,7 @@ const GRNPage = () => {
     const today = todayDate;
     const brandCounts = {};
     const updatedItems = [...selectedItems];
+    const usedCodesInRun = new Set();
     
     for (let i = 0; i < updatedItems.length; i++) {
       const item = updatedItems[i];
@@ -158,7 +160,8 @@ const GRNPage = () => {
       brandCounts[brandKey]++;
       
       const batchNumber = brandCounts[brandKey];
-      const batchCode = await generateUniqueBatchCode(brand, today, batchNumber - 1);
+      const batchCode = await generateUniqueBatchCode(brand, today, batchNumber - 1, 0, usedCodesInRun);
+      usedCodesInRun.add(batchCode);
       
       updatedItems[i].batch_code = batchCode;
     }
@@ -1184,30 +1187,21 @@ const GRNPage = () => {
                                   <div className="d-flex gap-1">
                                     <input
                                       type="text"
-                                      className="form-control form-control-sm flex-grow-1"
+                                      className="form-control form-control-sm flex-grow-1 font-monospace"
                                       value={item.batch_code || ""}
-                                      onChange={(e) => handleItemChange(index, 'batch_code', e.target.value.toUpperCase())}
                                       placeholder="Batch Code (Auto-generated)"
-                                      readOnly={!item.batch_code}
-                                      style={{ backgroundColor: item.batch_code ? '#f8f9fa' : 'white' }}
+                                      readOnly={true}
+                                      style={{ backgroundColor: '#e9ecef', cursor: 'not-allowed', fontWeight: 'bold' }}
+                                      title="Batch code is auto-generated, unique, and cannot be edited"
                                     />
                                     {item.batch_code && (
-                                      <>
-                                        <button
-                                          className="btn btn-sm btn-outline-info"
-                                          onClick={() => regenerateItemBatchCode(index)}
-                                          title="Regenerate"
-                                        >
-                                          <FaSync size={10} />
-                                        </button>
-                                        <button
-                                          className="btn btn-sm btn-outline-secondary"
-                                          onClick={() => copyToClipboard(item.batch_code)}
-                                          title="Copy"
-                                        >
-                                          <FaCopy size={10} />
-                                        </button>
-                                      </>
+                                      <button
+                                        className="btn btn-sm btn-outline-secondary"
+                                        onClick={() => copyToClipboard(item.batch_code)}
+                                        title="Copy Batch Code"
+                                      >
+                                        <FaCopy size={10} />
+                                      </button>
                                     )}
                                   </div>
                                   {!item.batch_code && item.selected && item.received_quantity > 0 && (
